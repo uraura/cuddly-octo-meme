@@ -8,12 +8,82 @@ import (
 	"time"
 )
 
+const addr = "tcp://127.0.0.1:5555"
+
 type payload [][]byte
 
 func main() {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	for i := 0; i < 10; i++ {
+		go func(ctx context.Context, idx int) {
+			sub, err := goczmq.NewSub("tcp://127.0.0.1:5555,tcp://127.0.0.1:5556", "")
+			if err != nil {
+				log.Fatalf("[%d] new sub err: %v\n", idx, err)
+			}
+			success := 0
+			failure := 0
+
+			defer func() {
+				sub.Destroy()
+				log.Printf("[%d] sub stop. success=%d failure=%d\n", idx, success, failure)
+			}()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					_, err := sub.RecvMessage()
+					if err != nil {
+						failure++
+						break
+					}
+					success++
+					//log.Printf("[%d] msg: %v", idx, msg)
+				}
+			}
+		}(ctx, i)
+	}
+
+	for i := 0; i < 2; i++ {
+		go func(ctx context.Context, idx int) {
+			pub, err := goczmq.NewPub(fmt.Sprintf("tcp://*:%d", 5555+idx))
+			if err != nil {
+				log.Fatalf("[%d] new pub err: %v", idx, err)
+			}
+			success := 0
+			failure := 0
+
+			defer func() {
+				pub.Destroy()
+				log.Printf("[%d] pub stop. success=%d failure=%d\n", idx, success, failure)
+			}()
+			ticker := time.NewTicker(1 * time.Millisecond)
+
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case ts := <-ticker.C:
+					data := [][]byte{[]byte("foo"), []byte("bar"), []byte(fmt.Sprintf("%v", ts.UnixNano()))}
+					if err := pub.SendMessage(data); err != nil {
+						//log.Printf("[%d] pub err: %v", idx, err)
+						failure++
+						break
+					}
+					success++
+				}
+			}
+		}(ctx, i)
+	}
+
+	time.Sleep(1 * time.Second)
+}
+
+func sample2() {
 	ctx := context.Background()
 
-	addr := "tcp://127.0.0.1:5555"
 	pub, _ := goczmq.NewPub(addr)
 	defer pub.Destroy()
 	sub1, _ := goczmq.NewSub(addr, "")

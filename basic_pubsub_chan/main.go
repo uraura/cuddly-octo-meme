@@ -9,10 +9,11 @@ import (
 
 type payload [][]byte
 
+const addr = "tcp://127.0.0.1:5555"
+
 func main() {
 	ctx := context.Background()
 
-	addr := "tcp://127.0.0.1:5555"
 	pub := goczmq.NewPubChanneler(addr)
 	defer pub.Destroy()
 	sub1 := goczmq.NewSubChanneler(addr, "")
